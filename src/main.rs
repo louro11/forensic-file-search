@@ -13,6 +13,22 @@ use hex_literal::hex;
 
 fn main() -> std::io::Result<()>{
 
+
+    //create if not exists config file
+    let config_path = "config.txt";
+    if !Path::new(config_path).exists() {
+        let mut config_file = File::create(config_path)?;
+        writeln!(config_file, "[Drives to scan]")?;
+        writeln!(config_file, "C:\\")?;
+        writeln!(config_file, "[File extensions]")?;
+        writeln!(config_file, "pdf,doc,docx,xls,xlsx,ppt,pptx")?;
+        writeln!(config_file, "[Keywords]")?;
+        writeln!(config_file, "-")?;
+        println!("Config file created at {}", config_path);
+    } else {
+        println!("Loading existing config file {}", config_path);
+    }
+
     let timestamp = Local::now().format("%d-%m-%Y_%H-%M-%S");
 
 
@@ -44,6 +60,7 @@ fn main() -> std::io::Result<()>{
                     //check for keyword
 
                     
+                    //Calculate hashes
                     // SHA-1
                     let mut sha1_hasher = Sha1::new();
                     // SHA-256
@@ -60,6 +77,7 @@ fn main() -> std::io::Result<()>{
                     let sha1_result = sha1_hasher.finalize();
                     let sha256_result = sha256_hasher.finalize();
 
+                    // Write results to file
                     writeln!(writer, "{}", entry.path().display())?; 
                     writeln!(writer, "SHA-1   : {:x}", sha1_result)?;
                     writeln!(writer, "SHA-256 : {:x}", sha256_result)?;
