@@ -1,76 +1,89 @@
 use walkdir::WalkDir;
 use clap::Parser;
 use::std;
-use std::path::Path;
+use std::path::{self, Path};
 use std::fs::File;
+use std::io::{self, Read}; // <- make sure Read is imported
 use std::io::{BufWriter, Write};
+use chrono::Local;
+use sha1::{Sha1, Digest as Sha1Digest};
+use sha2::{Sha256, Digest as Sha256Digest};
+use hex_literal::hex;
 
-/// Forensic File Searcher, a simple program to perform a forensic file search on a system drive(s)
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args{
-    //drives to scan [default: C]
-    #[arg(short, long)]
-    drives: Option<String>,
-
-    //file extensions [default: pdf,doc,docx,xls,xlsx]
-    #[arg(short, long)]
-    file_extensions: Option<String>,
-
-    //keywords
-    #[arg(short, long)]
-    keywords: Option<String>,
-
-    //enable filters
-    #[arg(short, long)]
-    enable_filters: Option<String>,
-}
 
 fn main() -> std::io::Result<()>{
 
-    println!("Main");
-    let args = Args::parse();
+    let timestamp = Local::now().format("%d-%m-%Y_%H-%M-%S");
 
-    let mut drives:Vec<String> = Vec::new();
-    drives.push("C:\\".to_string());
-    if !args.drives.is_none(){
-        drives = args.drives.unwrap().split(',').map(|s| format!("{}{}", s, ":\\")) // append suffix to each
-        .collect();
-    }
-    
-    let mut file_extensions = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"];
-    if !args.file_extensions.is_none(){
-        let mut file_extensions= args.file_extensions.unwrap().split(',');
-    }
 
+    let mut targets:Vec<String> = Vec::new();
+    targets.push("D:\\03_PROJETOS\\FORENSIC FILES TARGET".to_string());
     
-    let mut keywords = args.keywords;
-    let mut enable_filters = args.enable_filters;
+    let file_extensions = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"];
+
+    let compressed_file_extensions = ["zip", "7z", "bz", "bz2", "gzip", "rar", "tar"];
 
     let mut result_number = 0;
-    let file = File::create("output.txt")?;
-    let mut writer = BufWriter::new(file);
-    for drive in drives{
+    let mut compress_files_number = 0;
 
-        //ITERATE OVER ALL FILES IN ALL DRIVES
-        for entry in WalkDir::new(drive).into_iter().filter_map(|e|e.ok()){
-            for extension in file_extensions{
-                if let Some(ext) = entry.path().extension(){
-                    if ext == extension{
-                        println!("{}", entry.path().display());
-                        result_number+=1;
-                        writeln!(writer, "{}", entry.path().display())?; // Write each path followed by newline
-                        break;
-                    }
+    let filename = format!("{}-report.txt", timestamp);
+    let output_file = File::create(&filename)?;
+    let mut writer = BufWriter::new(output_file);
+    for target in targets{
+        for entry in WalkDir::new(target).into_iter().filter_map(|e|e.ok()){
+            if let Some(ext) = entry.path().extension(){
+
+                if file_extensions.iter().any(|wanted|ext.eq_ignore_ascii_case(wanted)){
                     
+                    let path = entry.path();
+                    let mut entry_file = File::open(path)?;
+                    result_number+=1;
+                    writeln!(writer, "---")?; 
+
+
+                    //check for keyword
+
+                    
+                    // SHA-1
+                    let mut sha1_hasher = Sha1::new();
+                    // SHA-256
+                    let mut sha256_hasher = Sha256::new();
+
+                    let mut buffer = [0u8; 8192];
+                    loop {
+                        let n = entry_file.read(&mut buffer)?;
+                        if n == 0 { break; }
+                        sha1_hasher.update(&buffer[..n]);
+                        sha256_hasher.update(&buffer[..n]);
+                    }
+
+                    let sha1_result = sha1_hasher.finalize();
+                    let sha256_result = sha256_hasher.finalize();
+
+                    writeln!(writer, "{}", entry.path().display())?; 
+                    writeln!(writer, "SHA-1   : {:x}", sha1_result)?;
+                    writeln!(writer, "SHA-256 : {:x}", sha256_result)?;
+                    writeln!(writer, "keyword snippet: ");
+                    writeln!(writer, "---")?; 
                 }
-            }
-            
+
+                if compressed_file_extensions.iter().any(|compressed|ext.eq_ignore_ascii_case(compressed)){
+                    compressed_files_handler(entry.path());
+                    compress_files_number+=1;
+                }  
+            }       
         }
 
     } 
     println!("Found {} files with the provided file extensions", result_number);
+    println!("Found {} compressed files", compress_files_number);
     println!("File paths saved to output.txt");
     Ok(())
 }
 
+
+
+
+fn compressed_files_handler(path: &Path){
+    println!("{}", path.display());
+}
